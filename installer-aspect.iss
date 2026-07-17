@@ -22,8 +22,12 @@ SolidCompression=yes
 DirExistsWarning=no
 AllowNoIcons=yes
 WizardStyle=modern
-WizardResizable=yes
 SetupIconFile="media\icon.ico"
+VersionInfoCompany={#MyAppPublisher}
+VersionInfoDescription={#MyAppName} Installer
+VersionInfoProductName={#MyAppName}
+VersionInfoVersion={#MyAppVersion}
+AppCopyright=Chenzo David (chenzodavid.com), based on Aitum obs-vertical-canvas (GPL)
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
