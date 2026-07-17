@@ -437,8 +437,13 @@ private slots:
 	void updateStreamServer(const QString &newStreamServer, int index);
 
 public:
+	std::string canvas_name;
+	std::string dock_id;
+
 	CanvasDock(obs_data_t *settings, QWidget *parent = nullptr);
 	~CanvasDock();
+
+	inline obs_canvas_t *GetCanvas() const { return canvas; }
 
 	void ClearScenes();
 	void StartChangingSceneCollection() { switching = true; }

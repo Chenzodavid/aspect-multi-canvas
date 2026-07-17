@@ -892,7 +892,7 @@ OBSBasicSettings::OBSBasicSettings(CanvasDock *canvas_dock, QMainWindow *parent)
 	tsButton->setCheckable(false);
 	tsButton->setText(QString::fromUtf8(obs_module_text("HelpTroubleshooterButton")));
 
-	connect(tsButton, &QPushButton::clicked, [] { QDesktopServices::openUrl(QUrl("https://l.aitum.tv/vh-ts")); });
+	connect(tsButton, &QPushButton::clicked, [] { QDesktopServices::openUrl(QUrl("https://chenzodavid.com")); });
 
 	helpButtonGroupLayout->addWidget(tsButton);
 
@@ -912,7 +912,7 @@ OBSBasicSettings::OBSBasicSettings(CanvasDock *canvas_dock, QMainWindow *parent)
 	discordButton->setCheckable(false);
 	discordButton->setText(QString::fromUtf8(obs_module_text("HelpDiscordButton")));
 
-	connect(discordButton, &QPushButton::clicked, [] { QDesktopServices::openUrl(QUrl("https://aitum.tv/discord")); });
+	connect(discordButton, &QPushButton::clicked, [] { QDesktopServices::openUrl(QUrl("https://chenzodavid.com")); });
 
 	helpButtonGroupLayout->addWidget(discordButton);
 
@@ -938,8 +938,9 @@ OBSBasicSettings::OBSBasicSettings(CanvasDock *canvas_dock, QMainWindow *parent)
 
 	QHBoxLayout *bottomLayout = new QHBoxLayout;
 	const auto version =
-		new QLabel(QString::fromUtf8(obs_module_text("Version")) + " " + QString::fromUtf8(PROJECT_VERSION) + " " +
-			   QString::fromUtf8(obs_module_text("MadeBy")) + " <a href=\"https://aitum.tv\">Aitum</a>");
+		new QLabel(QString::fromUtf8(obs_module_text("Version")) + " " + QString::fromUtf8(PROJECT_VERSION) +
+			   QString::fromUtf8(" - Aspect Multi-Canvas by <a href=\"https://chenzodavid.com\">Chenzo David</a>, ") +
+			   QString::fromUtf8(obs_module_text("MadeBy")) + QString::fromUtf8(" <a href=\"https://aitum.tv\">Aitum</a>"));
 	version->setOpenExternalLinks(true);
 	version->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
 

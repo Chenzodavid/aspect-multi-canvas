@@ -8,7 +8,11 @@
 #include <obs-module.h>
 #include <QDesktopServices>
 
+#include <QComboBox>
+#include <QDialogButtonBox>
 #include <QGuiApplication>
+#include <QInputDialog>
+#include <QIntValidator>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMainWindow>
@@ -672,6 +676,152 @@ bool obs_module_load(void)
 	return true;
 }
 
+static void add_canvas_clicked(void *)
+{
+	const auto main_window = static_cast<QMainWindow *>(obs_frontend_get_main_window());
+
+	QDialog dialog(main_window);
+	dialog.setWindowTitle(QString::fromUtf8(obs_module_text("AddCanvas")));
+	auto layout = new QVBoxLayout(&dialog);
+
+	auto presets = new QComboBox(&dialog);
+	presets->addItem(QString::fromUtf8(obs_module_text("CustomResolution")), QSize(0, 0));
+	presets->addItem("1:1 Square (1080x1080)", QSize(1080, 1080));
+	presets->addItem("4:5 Portrait (1080x1350)", QSize(1080, 1350));
+	presets->addItem("9:16 Vertical (1080x1920)", QSize(1080, 1920));
+	presets->addItem("16:9 Widescreen (1920x1080)", QSize(1920, 1080));
+	layout->addWidget(presets);
+
+	auto sizeRow = new QHBoxLayout;
+	auto widthEdit = new QLineEdit(&dialog);
+	widthEdit->setValidator(new QIntValidator(2, 16384, widthEdit));
+	widthEdit->setPlaceholderText(QString::fromUtf8(obs_module_text("Width")));
+	auto heightEdit = new QLineEdit(&dialog);
+	heightEdit->setValidator(new QIntValidator(2, 16384, heightEdit));
+	heightEdit->setPlaceholderText(QString::fromUtf8(obs_module_text("Height")));
+	sizeRow->addWidget(widthEdit);
+	sizeRow->addWidget(new QLabel("x", &dialog));
+	sizeRow->addWidget(heightEdit);
+	layout->addLayout(sizeRow);
+
+	auto fill = [presets, widthEdit, heightEdit]() {
+		const QSize s = presets->currentData().toSize();
+		if (s.width() > 0) {
+			widthEdit->setText(QString::number(s.width()));
+			heightEdit->setText(QString::number(s.height()));
+		} else {
+			widthEdit->clear();
+			heightEdit->clear();
+			widthEdit->setFocus();
+		}
+	};
+	QObject::connect(presets, &QComboBox::currentIndexChanged, &dialog, fill);
+	fill();
+
+	auto brand = new QLabel(QString::fromUtf8(
+					"<small>Aspect Multi-Canvas by <a href=\"https://chenzodavid.com\">chenzodavid.com</a> - based on Aitum's obs-vertical-canvas</small>"),
+				&dialog);
+	brand->setOpenExternalLinks(true);
+	layout->addWidget(brand);
+
+	auto buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+	QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+	QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+	layout->addWidget(buttons);
+
+	if (dialog.exec() != QDialog::Accepted) {
+		return;
+	}
+	uint32_t width = widthEdit->text().toUInt();
+	uint32_t height = heightEdit->text().toUInt();
+	if (!width || !height) {
+		QMessageBox::warning(main_window, QString::fromUtf8(obs_module_text("AddCanvas")),
+				     QString::fromUtf8(obs_module_text("InvalidResolution")));
+		return;
+	}
+	width += width & 1;
+	height += height & 1;
+	for (const auto &it : canvas_docks) {
+		if (it->GetCanvasWidth() == width && it->GetCanvasHeight() == height) {
+			QMessageBox::warning(main_window, QString::fromUtf8(obs_module_text("AddCanvas")),
+					     QString::fromUtf8(obs_module_text("ResolutionExists")));
+			return;
+		}
+	}
+	int n = 2;
+	std::string dock_id;
+	bool used = true;
+	while (used) {
+		dock_id = "VerticalCanvasDock" + std::to_string(n++);
+		used = false;
+		for (const auto &it : canvas_docks) {
+			if (it->dock_id == dock_id) {
+				used = true;
+			}
+		}
+	}
+	const std::string canvas_name = "Aspect " + std::to_string(width) + "x" + std::to_string(height);
+	auto settings = obs_data_create();
+	obs_data_set_int(settings, "width", width);
+	obs_data_set_int(settings, "height", height);
+	obs_data_set_bool(settings, "backtrack", true);
+	obs_data_set_string(settings, "dock_id", dock_id.c_str());
+	obs_data_set_string(settings, "canvas_name", canvas_name.c_str());
+	obs_data_set_bool(settings, "run_first_time_setup", true);
+	const auto dock = new CanvasDock(settings, main_window);
+	obs_data_release(settings);
+	obs_frontend_add_dock_by_id(dock_id.c_str(), canvas_name.c_str(), dock);
+	canvas_docks.push_back(dock);
+	dock->LoadScenes();
+	dock->FinishLoading();
+	save_canvas();
+	blog(LOG_INFO, "[Vertical Canvas] Added canvas '%s' (%dx%d)", canvas_name.c_str(), width, height);
+}
+
+static void remove_canvas_clicked(void *)
+{
+	const auto main_window = static_cast<QMainWindow *>(obs_frontend_get_main_window());
+	QStringList items;
+	for (const auto &it : canvas_docks) {
+		if (it->dock_id != "VerticalCanvasDock") {
+			items << QString::fromUtf8(it->canvas_name.c_str());
+		}
+	}
+	if (items.isEmpty()) {
+		QMessageBox::information(main_window, QString::fromUtf8(obs_module_text("RemoveCanvas")),
+					 QString::fromUtf8(obs_module_text("NoRemovableCanvas")));
+		return;
+	}
+	bool ok = false;
+	const QString sel = QInputDialog::getItem(main_window, QString::fromUtf8(obs_module_text("RemoveCanvas")),
+						  QString::fromUtf8(obs_module_text("Canvas")), items, 0, false, &ok);
+	if (!ok || sel.isEmpty()) {
+		return;
+	}
+	CanvasDock *dock = nullptr;
+	for (const auto &it : canvas_docks) {
+		if (sel == QString::fromUtf8(it->canvas_name.c_str())) {
+			dock = it;
+		}
+	}
+	if (!dock) {
+		return;
+	}
+	if (QMessageBox::question(main_window, QString::fromUtf8(obs_module_text("RemoveCanvas")),
+				  QString::fromUtf8(obs_module_text("RemoveCanvasConfirm"))) != QMessageBox::Yes) {
+		return;
+	}
+	dock->StopOutputs();
+	canvas_docks.remove(dock);
+	const std::string id = dock->dock_id;
+	blog(LOG_INFO, "[Vertical Canvas] Removing canvas '%s'", dock->canvas_name.c_str());
+	obs_frontend_remove_dock((id + "Scenes").c_str());
+	obs_frontend_remove_dock((id + "Sources").c_str());
+	obs_frontend_remove_dock((id + "Transitions").c_str());
+	obs_frontend_remove_dock(id.c_str());
+	save_canvas();
+}
+
 void obs_module_post_load(void)
 {
 	const auto path = obs_module_config_path("config.json");
@@ -698,20 +848,31 @@ void obs_module_post_load(void)
 		const auto name = "VerticalCanvasDock";
 		obs_frontend_add_dock_by_id(name, title.toUtf8().constData(), canvasDock);
 		canvas_docks.push_back(canvasDock);
-		obs_data_array_release(canvas);
 		blog(LOG_INFO, "[Vertical Canvas] New Canvas created");
-		return;
 	}
 	for (size_t i = 0; i < count; i++) {
 		const auto item = obs_data_array_item(canvas, i);
+		if (i > 0 && !strlen(obs_data_get_string(item, "dock_id"))) {
+			const std::string id = "VerticalCanvasDock" + std::to_string(i + 1);
+			obs_data_set_string(item, "dock_id", id.c_str());
+		}
+		if (i > 0 && !strlen(obs_data_get_string(item, "canvas_name"))) {
+			const std::string cn = "Aspect " + std::to_string(i + 1);
+			obs_data_set_string(item, "canvas_name", cn.c_str());
+		}
 		const auto canvasDock = new CanvasDock(item, main_window);
-		const QString title = QString::fromUtf8(obs_module_text("Vertical"));
-		const auto name = "VerticalCanvasDock";
-		obs_frontend_add_dock_by_id(name, title.toUtf8().constData(), canvasDock);
+		QString title = QString::fromUtf8(obs_module_text("Vertical"));
+		if (canvasDock->canvas_name != CANVAS_NAME) {
+			title = QString::fromUtf8(canvasDock->canvas_name.c_str());
+		}
+		obs_frontend_add_dock_by_id(canvasDock->dock_id.c_str(), title.toUtf8().constData(), canvasDock);
 		obs_data_release(item);
 		canvas_docks.push_back(canvasDock);
 	}
 	obs_data_array_release(canvas);
+
+	obs_frontend_add_tools_menu_item(obs_module_text("AddCanvas"), add_canvas_clicked, nullptr);
+	obs_frontend_add_tools_menu_item(obs_module_text("RemoveCanvas"), remove_canvas_clicked, nullptr);
 
 	if (!vendor) {
 		vendor = obs_websocket_register_vendor("aitum-vertical-canvas");
@@ -741,14 +902,8 @@ void obs_module_post_load(void)
 	obs_websocket_vendor_register_request(vendor, "pause_recording", vendor_request_pause_recording, nullptr);
 	obs_websocket_vendor_register_request(vendor, "unpause_recording", vendor_request_unpause_recording, nullptr);
 
-	std::string url = "https://api.aitum.tv/plugin/vertical";
-	const char *pguid = config_get_string(obs_frontend_get_app_config(), "General", "InstallGUID");
-	if (pguid) {
-		url += "?uuid=";
-		url += pguid;
-	}
-
-	version_update_info = update_info_create_single("[Vertical Canvas]", "OBS", url.c_str(), version_info_downloaded, nullptr);
+	/* Upstream update check disabled in this fork: accepting an Aitum update
+	 * would replace this build and remove multi-canvas support. */
 }
 
 void obs_module_unload(void)
@@ -1017,10 +1172,23 @@ CanvasDock::CanvasDock(obs_data_t *settings, QWidget *parent)
 	  preview(new OBSQTDisplay(this)),
 	  eventFilter(BuildEventFilter())
 {
+	bool own_settings = false;
 	if (!settings) {
 		settings = obs_data_create();
 		obs_data_set_bool(settings, "backtrack", true);
 		first_time = true;
+		own_settings = true;
+	}
+	if (obs_data_get_bool(settings, "run_first_time_setup")) {
+		first_time = true;
+	}
+	canvas_name = obs_data_get_string(settings, "canvas_name");
+	if (canvas_name.empty()) {
+		canvas_name = CANVAS_NAME;
+	}
+	dock_id = obs_data_get_string(settings, "dock_id");
+	if (dock_id.empty()) {
+		dock_id = "VerticalCanvasDock";
 	}
 	partnerBlockTime = (time_t)obs_data_get_int(settings, "partner_block");
 	canvas_width = (uint32_t)obs_data_get_int(settings, "width");
@@ -1153,7 +1321,10 @@ CanvasDock::CanvasDock(obs_data_t *settings, QWidget *parent)
 	setContentsMargins(0, 0, 0, 0);
 	setLayout(mainLayout);
 
-	const QString title = QString::fromUtf8(obs_module_text("Vertical"));
+	QString title = QString::fromUtf8(obs_module_text("Vertical"));
+	if (canvas_name != CANVAS_NAME) {
+		title = QString::fromUtf8(canvas_name.c_str());
+	}
 
 	const QString replayName = title + " " + QString::fromUtf8(obs_module_text("Backtrack"));
 	auto hotkeyData = obs_data_get_obj(settings, "backtrack_hotkeys");
@@ -1168,17 +1339,17 @@ CanvasDock::CanvasDock(obs_data_t *settings, QWidget *parent)
 	scenesDock = new CanvasScenesDock(this, parent);
 	scenesDock->SetGridMode(obs_data_get_bool(settings, "grid_mode"));
 
-	const auto scenesName = "VerticalCanvasDockScenes";
+	const auto scenesName = dock_id + "Scenes";
 	const auto scenesTitle = title + " " + QString::fromUtf8(obs_frontend_get_locale_string("Basic.Main.Scenes"));
-	obs_frontend_add_dock_by_id(scenesName, scenesTitle.toUtf8().constData(), scenesDock);
+	obs_frontend_add_dock_by_id(scenesName.c_str(), scenesTitle.toUtf8().constData(), scenesDock);
 	sourcesDock = new CanvasSourcesDock(this, parent);
-	const auto sourcesName = "VerticalCanvasDockSources";
+	const auto sourcesName = dock_id + "Sources";
 	const auto sourcesTitle = title + " " + QString::fromUtf8(obs_frontend_get_locale_string("Basic.Main.Sources"));
-	obs_frontend_add_dock_by_id(sourcesName, sourcesTitle.toUtf8().constData(), sourcesDock);
+	obs_frontend_add_dock_by_id(sourcesName.c_str(), sourcesTitle.toUtf8().constData(), sourcesDock);
 	transitionsDock = new CanvasTransitionsDock(this, parent);
-	const auto transitionsName = "VerticalCanvasDockTransitions";
+	const auto transitionsName = dock_id + "Transitions";
 	const auto transitionsTitle = title + " " + QString::fromUtf8(obs_frontend_get_locale_string("Basic.SceneTransitions"));
-	obs_frontend_add_dock_by_id(transitionsName, transitionsTitle.toUtf8().constData(), transitionsDock);
+	obs_frontend_add_dock_by_id(transitionsName.c_str(), transitionsTitle.toUtf8().constData(), transitionsDock);
 	preview->setObjectName(QStringLiteral("preview"));
 	preview->setMinimumSize(QSize(24, 24));
 	QSizePolicy sizePolicy1(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -1475,20 +1646,10 @@ CanvasDock::CanvasDock(obs_data_t *settings, QWidget *parent)
 	painter.drawText(pixmap.rect(), Qt::AlignCenter, "❤️");
 	contributeButton->setIcon(QIcon(pixmap));
 	contributeButton->setToolTip(QString::fromUtf8(obs_module_text("VerticalDonate")));
-	contributeButton->setStyleSheet(
-		QString::fromUtf8("QPushButton{ border-top-right-radius: 0; border-bottom-right-radius: 0;}"));
 	QPushButton::connect(contributeButton, &QPushButton::clicked,
-			     [] { QDesktopServices::openUrl(QUrl("https://aitum.tv/contribute")); });
+			     [] { QDesktopServices::openUrl(QUrl("https://chenzodavid.com")); });
 
 	aitumButtonGroupLayout->addWidget(contributeButton);
-
-	auto aitumButton = new QPushButton;
-	aitumButton->setMinimumHeight(30);
-	aitumButton->setIcon(QIcon(":/aitum/media/aitum.png"));
-	aitumButton->setToolTip(QString::fromUtf8("https://aitum.tv"));
-	aitumButton->setStyleSheet(QString::fromUtf8("QPushButton{border-top-left-radius: 0; border-bottom-left-radius: 0;}"));
-	connect(aitumButton, &QPushButton::clicked, [] { QDesktopServices::openUrl(QUrl("https://aitum.tv")); });
-	aitumButtonGroupLayout->addWidget(aitumButton);
 
 	buttonRow->addLayout(aitumButtonGroupLayout);
 
@@ -1606,7 +1767,7 @@ CanvasDock::CanvasDock(obs_data_t *settings, QWidget *parent)
 	obs_hotkey_load(split_hotkey, start_hotkey);
 	obs_data_array_release(start_hotkey);
 
-	if (first_time) {
+	if (own_settings) {
 		obs_data_release(settings);
 	}
 	hide();
@@ -1721,7 +1882,7 @@ CanvasDock::~CanvasDock()
 
 	auto ph = obs_get_proc_handler();
 	calldata_t cd = {0};
-	calldata_set_string(&cd, "canvas_name", CANVAS_NAME);
+	calldata_set_string(&cd, "canvas_name", canvas_name.c_str());
 	proc_handler_call(ph, "downstream_keyer_remove_canvas", &cd);
 	calldata_free(&cd);
 
@@ -5117,7 +5278,7 @@ bool CanvasDock::StartVideo()
 	obs_frontend_canvas_list cl = {};
 	obs_frontend_get_canvases(&cl);
 	for (size_t i = 0; i < cl.canvases.num; i++) {
-		if (strcmp(obs_canvas_get_name(cl.canvases.array[i]), CANVAS_NAME) == 0 &&
+		if (strcmp(obs_canvas_get_name(cl.canvases.array[i]), canvas_name.c_str()) == 0 &&
 		    !obs_canvas_removed(cl.canvases.array[i])) {
 			c = obs_canvas_get_ref(cl.canvases.array[i]);
 			break;
@@ -5127,11 +5288,11 @@ bool CanvasDock::StartVideo()
 	if (canvas) {
 		obs_canvas_release(canvas);
 	}
-	canvas = c ? c : obs_frontend_add_canvas(CANVAS_NAME, nullptr, PROGRAM);
+	canvas = c ? c : obs_frontend_add_canvas(canvas_name.c_str(), nullptr, PROGRAM);
 	auto ph = obs_get_proc_handler();
 	calldata_t cd2 = {0};
 	calldata_set_ptr(&cd2, "canvas", canvas);
-	calldata_set_string(&cd2, "canvas_name", CANVAS_NAME);
+	calldata_set_string(&cd2, "canvas_name", canvas_name.c_str());
 	calldata_set_ptr(&cd2, "get_transitions", (void *)CanvasDock::get_transitions);
 	calldata_set_ptr(&cd2, "get_transitions_data", this);
 	proc_handler_call(ph, "downstream_keyer_add_canvas", &cd2);
@@ -6910,6 +7071,8 @@ obs_data_t *CanvasDock::SaveSettings()
 
 	obs_data_set_int(save_data, "width", canvas_width);
 	obs_data_set_int(save_data, "height", canvas_height);
+	obs_data_set_string(save_data, "canvas_name", canvas_name.c_str());
+	obs_data_set_string(save_data, "dock_id", dock_id.c_str());
 	obs_data_set_int(save_data, "partner_block", partnerBlockTime);
 	obs_data_set_bool(save_data, "preview_disabled", preview_disabled);
 	obs_data_set_bool(save_data, "virtual_cam_warned", virtual_cam_warned);
