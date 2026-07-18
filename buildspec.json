@@ -37,12 +37,12 @@
         }
     },
     "name": "vertical-canvas",
-    "displayName": "Vertical",
-    "version": "1.6.4",
-    "author": "Aitum",
-    "website": "https://aitum.tv",
-    "email": "support@aitum.tv",
+    "displayName": "Aspect Multi-Canvas",
+    "version": "1.0.0",
+    "author": "Chenzo David",
+    "website": "https://chenzodavid.com",
+    "email": "support@chenzodavid.com",
     "uuids": {
-        "windowsApp": "9072EA15-785B-4BD9-8310-68CEECDA2117"
+        "windowsApp": "4EA636A6-A537-43F7-9AB1-F0961D7FC42F"
     }
 }
