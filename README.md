@@ -1,17 +1,22 @@
 # Aspect Multi-Canvas for OBS Studio
 
-A fork by [Chenzo David](https://chenzodavid.com) adding **multiple simultaneous canvases at any aspect ratio** — run your main 16:9 canvas plus 1:1 Square, 4:5 Portrait, 9:16 Vertical, or any custom resolution at the same time, each with its own scenes, stream destinations, and recordings.
+A fork by [Chenzo David](https://chenzodavid.com) adding **multiple simultaneous canvases at any aspect ratio** - run your main 16:9 canvas plus 1:1 Square, 4:5 Portrait, 9:16 Vertical, or any custom resolution at the same time, each with its own scenes, stream destinations, and recordings.
 
-- Tools menu → **Add Aspect Canvas** — pick a preset ratio or type a custom width x height
-- Tools menu → **Remove Aspect Canvas** — remove an extra canvas
+## Download
+
+- **Website (recommended):** https://chenzodavid.com/multivertical/
+- **GitHub releases:** https://github.com/Chenzodavid/aspect-multi-canvas/releases
+
+## Features
+
+- Tools menu > **Add Aspect Canvas** - pick a preset ratio or type a custom width x height
+- Tools menu > **Remove Aspect Canvas** - remove an extra canvas
 - Each canvas streams and records independently and is saved across OBS restarts
 - Each canvas must have a unique resolution
 
-Fork home: https://chenzodavid.com
-
 # Credit and license
 
-Based on [Vertical Canvas](https://github.com/Aitum/obs-vertical-canvas) by [Aitum](https://aitum.tv), which provides the entire canvas engine this fork builds on. Licensed under the GPL (see [LICENSE](LICENSE)); this fork remains GPL — if you share the plugin, share this source with it.
+Based on [Vertical Canvas](https://github.com/Aitum/obs-vertical-canvas) by [Aitum](https://aitum.tv), which provides the entire canvas engine this fork builds on. Licensed under the GPL (see [LICENSE](LICENSE)); this fork remains GPL - if you share the plugin, share this source with it.
 
 # Build
 
